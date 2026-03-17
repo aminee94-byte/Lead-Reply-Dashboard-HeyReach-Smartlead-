@@ -30,7 +30,6 @@ export default function LeadReplyDashboard() {
   const [selectedReply, setSelectedReply] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [warnings, setWarnings] = useState([]);
 
   const [sentimentFilter, setSentimentFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
@@ -41,54 +40,29 @@ export default function LeadReplyDashboard() {
     const load = async () => {
       setLoading(true);
       setError("");
-      setWarnings([]);
       try {
-        const results = await Promise.allSettled([
+        const [heyreachRes, smartleadRes] = await Promise.all([
           fetch("/api/heyreach"),
           fetch("/api/smartlead"),
         ]);
 
-        const merged = [];
-        const nextWarnings = [];
-
-        for (const [index, result] of results.entries()) {
-          const sourceName = index === 0 ? "HeyReach" : "Smartlead";
-          if (result.status !== "fulfilled") {
-            nextWarnings.push(`${sourceName}: request failed`);
-            continue;
-          }
-
-          const response = result.value;
-          let payload = {};
-          try {
-            payload = await response.json();
-          } catch {
-            nextWarnings.push(`${sourceName}: invalid JSON response`);
-            continue;
-          }
-
-          if (!response.ok) {
-            nextWarnings.push(`${sourceName}: ${payload.error || `HTTP ${response.status}`}`);
-            continue;
-          }
-
-          if (Array.isArray(payload.replies)) {
-            merged.push(...payload.replies);
-          }
-
-          if (Array.isArray(payload.warnings) && payload.warnings.length > 0) {
-            nextWarnings.push(...payload.warnings.map((w) => `${sourceName}: ${w}`));
-          }
+        if (!heyreachRes.ok) {
+          const payload = await heyreachRes.json().catch(() => ({}));
+          throw new Error(payload.error || `HeyReach API failed (${heyreachRes.status})`);
+        }
+        if (!smartleadRes.ok) {
+          const payload = await smartleadRes.json().catch(() => ({}));
+          throw new Error(payload.error || `Smartlead API failed (${smartleadRes.status})`);
         }
 
-        merged.sort((a, b) => new Date(b.lastMessageAt || 0) - new Date(a.lastMessageAt || 0));
+        const heyreach = await heyreachRes.json();
+        const smartlead = await smartleadRes.json();
+
+        const merged = [...(heyreach.replies || []), ...(smartlead.replies || [])]
+          .sort((a, b) => new Date(b.lastMessageAt || 0) - new Date(a.lastMessageAt || 0));
+
         setReplies(merged);
         setSelectedReply(merged[0] || null);
-        setWarnings(nextWarnings);
-
-        if (!merged.length) {
-          setError("No replies could be loaded from the available data sources.");
-        }
       } catch (loadError) {
         setError(loadError.message || "Failed to load data");
       } finally {
@@ -152,17 +126,6 @@ export default function LeadReplyDashboard() {
         </div>
       </header>
 
-      {warnings.length > 0 && (
-        <div style={{ margin: 12, border: "1px solid #854d0e", background: "#451a03", color: "#fcd34d", borderRadius: 8, padding: 10 }}>
-          <strong>Data source warnings:</strong>
-          <ul style={{ margin: "8px 0 0", paddingLeft: 20 }}>
-            {warnings.map((warning, index) => (
-              <li key={`${warning}-${index}`}>{warning}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
       <div style={{ display: "grid", gridTemplateColumns: "240px 1fr 340px", minHeight: "calc(100vh - 120px)" }}>
         <aside style={{ borderRight: "1px solid #27272a", padding: 14 }}>
           <label style={{ fontSize: 12 }}>Source</label>
@@ -217,7 +180,7 @@ export default function LeadReplyDashboard() {
                 <span style={{ padding: "2px 8px", borderRadius: 999, background: reply.channel === "linkedin" ? "#1d4ed822" : "#b4530922", color: reply.channel === "linkedin" ? "#60a5fa" : "#fbbf24", fontSize: 12 }}>
                   {reply.channel === "linkedin" ? "🔗 LinkedIn" : "📧 Email"}
                 </span>
-                <span style={{ padding: "2px 8px", borderRadius: 999, background: sentimentMeta[reply.sentiment]?.bg || sentimentMeta.unknown.bg, color: sentimentMeta[reply.sentiment]?.color || sentimentMeta.unknown.color, fontSize: 12 }}>{sentimentMeta[reply.sentiment]?.label || sentimentMeta.unknown.label}</span>
+                <span style={{ padding: "2px 8px", borderRadius: 999, background: sentimentMeta[reply.sentiment].bg, color: sentimentMeta[reply.sentiment].color, fontSize: 12 }}>{sentimentMeta[reply.sentiment].label}</span>
               </div>
               <div style={{ fontSize: 13, color: "#d4d4d8" }}>{reply.lead?.company || "No company"}</div>
               <div style={{ marginTop: 5, fontSize: 13, color: "#a1a1aa", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{reply.lastMessageText || "(no message)"}</div>

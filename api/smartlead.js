@@ -34,7 +34,7 @@ export default async function handler(req, res) {
 
   const apiKey = process.env.SMARTLEAD_API_KEY;
   if (!apiKey) {
-    return res.status(200).json({ replies: [], warnings: ["Missing required environment variable: SMARTLEAD_API_KEY"] });
+    return res.status(500).json({ error: "Missing required environment variable: SMARTLEAD_API_KEY" });
   }
 
   try {
@@ -89,8 +89,8 @@ export default async function handler(req, res) {
     });
 
     replies.sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
-    return res.status(200).json({ replies, warnings: [] });
+    return res.status(200).json({ replies });
   } catch (error) {
-    return res.status(200).json({ replies: [], warnings: [error.message || "Failed to fetch Smartlead replies"] });
+    return res.status(500).json({ error: error.message || "Failed to fetch Smartlead replies" });
   }
 }

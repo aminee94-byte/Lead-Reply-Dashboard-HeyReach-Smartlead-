@@ -26,11 +26,7 @@ function normalizeMessages(messages = []) {
   }));
 }
 
-async function fetchAccountReplies(account, delayMs = 0) {
-  if (delayMs) {
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
-  }
-
+async function fetchAccountReplies(account) {
   const apiKey = process.env[account.env];
   if (!apiKey) {
     throw new Error(`Missing required environment variable: ${account.env}`);
@@ -71,22 +67,17 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const results = await Promise.allSettled(
-    accountDefinitions.map((account, index) => fetchAccountReplies(account, index * 150))
-  );
-
-  const merged = [];
-  const warnings = [];
-
-  results.forEach((result, i) => {
-    if (result.status === "fulfilled") {
-      merged.push(...result.value);
-      return;
+  try {
+    const merged = [];
+    for (const account of accountDefinitions) {
+      const replies = await fetchAccountReplies(account);
+      merged.push(...replies);
+      await new Promise((resolve) => setTimeout(resolve, 150));
     }
 
-    warnings.push(`${accountDefinitions[i].name}: ${result.reason?.message || "Unknown error"}`);
-  });
-
-  merged.sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
-  return res.status(200).json({ replies: merged, warnings });
+    merged.sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
+    return res.status(200).json({ replies: merged });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Failed to fetch HeyReach replies" });
+  }
 }
